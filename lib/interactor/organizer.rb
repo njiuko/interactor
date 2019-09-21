@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Interactor
   # Public: Interactor::Organizer methods. Because Interactor::Organizer is a
   # module, custom Interactor::Organizer classes should include
@@ -27,7 +29,9 @@ module Interactor
       # Interactor::Organizer's invocation. These interactors are invoked in
       # the order in which they are declared.
       #
-      # interactors - Zero or more (or an Array of) Interactor classes.
+      # interactors - Zero or more (or an Array of) Interactor classes or hashes with
+      #               a key :interactor and an optional :if with a symbol for a method name
+      #               which gets called on the instance to check if an interactor should be run
       #
       # Examples
       #
@@ -43,9 +47,27 @@ module Interactor
       #     organize [InteractorThree, InteractorFour]
       #   end
       #
+      #   class MySecondOrganizer
+      #     include Interactor::Organizer
+      #
+      #     organize { interactor: InteractorThree, if: :user_missing? }, { interactor: InteractorFour }
+      #
+      #     private
+      #
+      #     def user_missing?
+      #       context.user.blank?
+      #     end
+      #   end
+      #
       # Returns nothing.
       def organize(*interactors)
-        @organized = interactors.flatten
+        @organized = interactors.flatten.map do |interactor|
+          if interactor.is_a?(Hash)
+            interactor
+          else
+            { interactor: interactor }
+          end
+        end
       end
 
       # Internal: An Array of declared Interactors to be invoked.
@@ -55,11 +77,11 @@ module Interactor
       #   class MyOrganizer
       #     include Interactor::Organizer
       #
-      #     organize InteractorOne, InteractorTwo
+      #     organize { interactor: InteractorOne }, { interactor: InteractorTwo, if: :user_missing? }
       #   end
       #
       #   MyOrganizer.organized
-      #   # => [InteractorOne, InteractorTwo]
+      #   # => [{ interactor: InteractorOne }, { interactor: InteractorTwo, if: :user_missing? }]
       #
       # Returns an Array of Interactor classes or an empty Array.
       def organized
@@ -76,7 +98,10 @@ module Interactor
       # Returns nothing.
       def call
         self.class.organized.each do |interactor|
-          interactor.call!(context)
+          if interactor[:if]
+            next unless send(interactor[:if])
+          end
+          interactor[:interactor].call!(context)
         end
       end
     end
